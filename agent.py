@@ -75,35 +75,41 @@ def save_and_prepare_repo(repo_dir: str, brief: str, repo_name: str, code: str):
 # --- UPDATED DEPLOYMENT FUNCTIONS ---
 
 def deploy_to_github(repo_dir: str, repo_name: str) -> dict:
+    """Initializes a git repo, creates a public GitHub repo, and pushes the code."""
     print(f"🚀 Deploying {repo_name} to GitHub...")
     try:
-        subprocess.run(["git", "init", "-b", "main"], cwd=repo_dir, check=True)
+        subprocess.run(["git", "init", "-b", "main"], cwd=repo_dir, check=True, capture_output=True)
         
-        # --- THE FIX IS HERE ---
         # Configure Git within the script's runtime environment
-        subprocess.run(['git', 'config', 'user.name', GIT_USER_NAME], cwd=repo_dir, check=True)
-        subprocess.run(['git', 'config', 'user.email', GIT_USER_EMAIL], cwd=repo_dir, check=True)
+        subprocess.run(['git', 'config', 'user.name', GIT_USER_NAME], cwd=repo_dir, check=True, capture_output=True)
+        subprocess.run(['git', 'config', 'user.email', GIT_USER_EMAIL], cwd=repo_dir, check=True, capture_output=True)
         
-        subprocess.run(["git", "add", "."], cwd=repo_dir, check=True)
-        subprocess.run(["git", "commit", "-m", "Initial commit via AI agent"], cwd=repo_dir, check=True)
+        subprocess.run(["git", "add", "."], cwd=repo_dir, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial commit via AI agent"], cwd=repo_dir, check=True, capture_output=True)
         
         commit_sha_result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_dir, check=True, capture_output=True, text=True)
         commit_sha = commit_sha_result.stdout.strip()
 
-        create_repo_command = f"gh repo create {repo_name} --public --source=."
-        subprocess.run(create_repo_command, shell=True, cwd=repo_dir, check=True)
+        # Use the locally installed gh binary
+        create_repo_command = f"./bin/gh repo create {repo_name} --public --source=."
+        subprocess.run(create_repo_command, shell=True, cwd=repo_dir, check=True, capture_output=True)
         
-        subprocess.run(["git", "push", "-u", "origin", "main"], cwd=repo_dir, check=True)
+        subprocess.run(["git", "push", "-u", "origin", "main"], cwd=repo_dir, check=True, capture_output=True)
         
-        enable_pages_command = f"gh api --method POST -H \"Accept: application/vnd.github+json\" /repos/{GITHUB_USERNAME}/{repo_name}/pages -f source[branch]=main -f source[path]=\"/\""
-        subprocess.run(enable_pages_command, shell=True, check=True)
+        # Use the locally installed gh binary
+        enable_pages_command = f"./bin/gh api --method POST -H \"Accept: application/vnd.github+json\" /repos/{GITHUB_USERNAME}/{repo_name}/pages -f source[branch]=main -f source[path]=\"/\""
+        subprocess.run(enable_pages_command, shell=True, check=True, capture_output=True)
         
         repo_url = f"https://github.com/{GITHUB_USERNAME}/{repo_name}"
         pages_url = f"https://{GITHUB_USERNAME}.github.io/{repo_name}/"
         
+        print(f"✅ Deployment successful. Commit SHA: {commit_sha}")
         return {"repo_url": repo_url, "pages_url": pages_url, "commit_sha": commit_sha}
+
     except subprocess.CalledProcessError as e:
-        print(f"❌ An error occurred during deployment: {e.stderr.decode()}")
+        # Check if stderr has content before trying to decode it
+        error_message = e.stderr.decode() if e.stderr else "No error output captured."
+        print(f"❌ An error occurred during deployment: {error_message}")
         return None
 
 def handle_revision_and_deploy(repo_dir: str, repo_name: str, new_brief: str) -> dict:
