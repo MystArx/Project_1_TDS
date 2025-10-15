@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO)
 
 app = FastAPI()
 
-ef run_the_build_process(task_data: dict):
+def run_the_build_process(task_data: dict):
     # --- START FINAL DEBUG CODE ---
     logging.info("--- INSPECTING RUNTIME ENVIRONMENT ---")
     try:
