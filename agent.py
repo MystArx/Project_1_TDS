@@ -104,6 +104,11 @@ def save_and_prepare_repo(repo_dir: str, brief: str, repo_name: str, code: str):
 # <-- UPDATED FUNCTION ---
 def deploy_to_github(repo_dir: str, repo_name: str) -> dict:
     """Initializes a git repo, creates a public GitHub repo, and pushes the code."""
+    # --- START DEBUG CODE ---
+    print("--- PYTHON SCRIPT: DEBUGGING GIT CONFIG ---")
+    subprocess.run("git config --list --show-origin", shell=True, cwd=repo_dir)
+    print("--- PYTHON SCRIPT: END DEBUGGING ---")
+    # --- END DEBUG CODE ---
     print(f"🚀 Deploying {repo_name} to GitHub...")
     try:
         subprocess.run(["git", "init", "-b", "main"], cwd=repo_dir, check=True, capture_output=True)
