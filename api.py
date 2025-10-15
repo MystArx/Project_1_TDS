@@ -38,14 +38,32 @@ def run_the_build_process(task_data: dict):
             deploy_info = deploy_to_github(local_repo_path, repo_name, brief, task_data.get("attachments"))
         
         elif round_number == 2:
-            logging.info("Round 2 logic needs to be fully implemented.")
-            # Example call for when you implement it
-            # local_repo_path = f"output/{repo_name}"
-            # deploy_info = handle_revision_and_deploy(local_repo_path, repo_name, brief, task_data.get("attachments"))
+            logging.info("Handling Round 2: Revising repo for '{repo_name}'")
+            local_repo_path = f"output/{repo_name}"
+            deploy_info = handle_revision_and_deploy(local_repo_path, repo_name, brief, task_data.get("attachments"))
 
         if deploy_info:
-            logging.info(f"Deployment successful. Preparing notification.")
-            # (Your notification logic would go here)
+            logging.info("Deployment successful. Preparing notification.")
+            evaluation_url = task_data.get("evaluation_url")
+            if evaluation_url:
+                notification_payload = {
+                    "email": task_data.get("email"),
+                    "task": task_data.get("task"),
+                    "round": task_data.get("round"),
+                    "nonce": task_data.get("nonce"),
+                    "repo_url": deploy_info.get("repo_url"),
+                    "commit_sha": deploy_info.get("commit_sha"),
+                    "pages_url": deploy_info.get("pages_url"),
+                }
+                try:
+                    logging.info(f"Notifying evaluation server: {notification_payload}")
+                    response = requests.post(evaluation_url, json=notification_payload)
+                    response.raise_for_status()
+                    logging.info("Successfully notified evaluation server.")
+                except requests.exceptions.RequestException as e:
+                    logging.error(f"Failed to notify evaluation server: {e}")
+            else:
+                logging.warning("No evaluation_url found. Skipping notification.")
         else:
             logging.error("Deployment failed. No notification sent.")
 
