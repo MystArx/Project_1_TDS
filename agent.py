@@ -78,26 +78,33 @@ def deploy_to_github(repo_dir: str, repo_name: str) -> dict:
     """Initializes a git repo, creates a public GitHub repo, and pushes the code."""
     print(f"🚀 Deploying {repo_name} to GitHub...")
     try:
+        # Initialize git repo
         subprocess.run(["git", "init", "-b", "main"], cwd=repo_dir, check=True, capture_output=True)
         
-        # Configure Git within the script's runtime environment
+        # Configure Git user
         subprocess.run(['git', 'config', 'user.name', GIT_USER_NAME], cwd=repo_dir, check=True, capture_output=True)
         subprocess.run(['git', 'config', 'user.email', GIT_USER_EMAIL], cwd=repo_dir, check=True, capture_output=True)
         
+        # Add and commit all files
         subprocess.run(["git", "add", "."], cwd=repo_dir, check=True, capture_output=True)
         subprocess.run(["git", "commit", "-m", "Initial commit via AI agent"], cwd=repo_dir, check=True, capture_output=True)
         
+        # Get commit SHA
         commit_sha_result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_dir, check=True, capture_output=True, text=True)
         commit_sha = commit_sha_result.stdout.strip()
 
-        # Use the locally installed gh binary
-        create_repo_command = f"./bin/gh repo create {repo_name} --public --source=."
+        # Create GitHub repo using system-wide gh
+        create_repo_command = f"gh repo create {repo_name} --public --source=."
         subprocess.run(create_repo_command, shell=True, cwd=repo_dir, check=True, capture_output=True)
         
+        # Push to GitHub
         subprocess.run(["git", "push", "-u", "origin", "main"], cwd=repo_dir, check=True, capture_output=True)
         
-        # Use the locally installed gh binary
-        enable_pages_command = f"./bin/gh api --method POST -H \"Accept: application/vnd.github+json\" /repos/{GITHUB_USERNAME}/{repo_name}/pages -f source[branch]=main -f source[path]=\"/\""
+        # Enable GitHub Pages
+        enable_pages_command = (
+            f'gh api --method POST -H "Accept: application/vnd.github+json" '
+            f'/repos/{GITHUB_USERNAME}/{repo_name}/pages -f source[branch]=main -f source[path]="/"'
+        )
         subprocess.run(enable_pages_command, shell=True, check=True, capture_output=True)
         
         repo_url = f"https://github.com/{GITHUB_USERNAME}/{repo_name}"
@@ -107,7 +114,6 @@ def deploy_to_github(repo_dir: str, repo_name: str) -> dict:
         return {"repo_url": repo_url, "pages_url": pages_url, "commit_sha": commit_sha}
 
     except subprocess.CalledProcessError as e:
-        # Check if stderr has content before trying to decode it
         error_message = e.stderr.decode() if e.stderr else "No error output captured."
         print(f"❌ An error occurred during deployment: {error_message}")
         return None
