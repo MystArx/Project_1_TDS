@@ -3,108 +3,114 @@ import logging
 import requests
 from fastapi import FastAPI, BackgroundTasks, Request, HTTPException
 from dotenv import load_dotenv
+from agent import deploy_to_github, handle_revision_and_deploy
 
-# Import all the final functions from your completed agent.py
-from agent import (
-    generate_code,
-    save_and_prepare_repo,
-    deploy_to_github,
-    handle_revision_and_deploy
-)
-
+# -------------------------
 # Load environment variables
+# -------------------------
 load_dotenv()
+ROUND2_SECRET = os.getenv("APP_SECRET")
 
-# Set up logging
+# -------------------------
+# Configure logging
+# -------------------------
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-app = FastAPI()
+# -------------------------
+# Initialize FastAPI app
+# -------------------------
+app = FastAPI(title="AI App Generator Backend")
 
+# -------------------------
+# Background build process
+# -------------------------
 def run_the_build_process(task_data: dict):
     """
-    This is the main background task router.
-    It checks the 'round' and calls the appropriate handler function.
+    Handles Round 1 and Round 2 deployments in background.
     """
+    logger.info("--- STARTING BUILD PROCESS ---")
+
     try:
         round_number = task_data.get("round", 1)
         repo_name = task_data.get("task")
         brief = task_data.get("brief")
-        
+        attachments = task_data.get("attachments", [])
+
         if not repo_name or not brief:
-            logging.error("Task data is missing 'brief' or 'task' key.")
+            logger.error("Task data is missing 'task' or 'brief'. Skipping deployment.")
             return
 
-        deploy_info = None
-        # --- Main Router Logic ---
-        if round_number == 1:
-            logging.info(f"Handling Round 1: Creating new repo for '{repo_name}'")
-            generated_html = generate_code(brief, task_data.get("attachments"))
-            if generated_html:
-                local_repo_path = f"output/{repo_name}"
-                # <-- UPDATED FUNCTION CALL
-                save_and_prepare_repo(local_repo_path, brief, repo_name, generated_html)
-                deploy_info = deploy_to_github(local_repo_path, repo_name)
-        
-        elif round_number == 2:
-            logging.info(f"Handling Round 2: Revising repo for '{repo_name}'")
-            app_secret = os.getenv("APP_SECRET")
-            request_secret = task_data.get("secret")
-            if not request_secret or request_secret != app_secret:
-                logging.error("Round 2 request missing or has invalid 'secret'. Aborting.")
+        # --- Round 2 secret verification ---
+        if round_number == 2:
+            provided_secret = task_data.get("secret")
+            if ROUND2_SECRET != provided_secret:
+                logger.error("❌ Round 2 secret verification failed. Aborting deployment.")
                 return
-            logging.info("Secret verified successfully.")
-            
-            local_repo_path = f"output/{repo_name}"
-            deploy_info = handle_revision_and_deploy(local_repo_path, repo_name, brief)
 
-        else:
-            logging.error(f"Unknown round number: {round_number}")
-            return
-            
-        # --- Final Notification Logic (runs for both rounds) ---
+        local_repo_path = f"output/{repo_name}"
+        deploy_info = None
+
+        # --- Round 1: Initial deployment ---
+        if round_number == 1:
+            logger.info(f"Round 1: Creating new repo for '{repo_name}'")
+            deploy_info = deploy_to_github(local_repo_path, repo_name, brief, attachments)
+
+        # --- Round 2: Revision deployment ---
+        elif round_number == 2:
+            logger.info(f"Round 2: Revising repo '{repo_name}'")
+            deploy_info = handle_revision_and_deploy(local_repo_path, repo_name, brief, attachments)
+
+        # --- Notify evaluation server ---
         if deploy_info:
-            logging.info(f"Deployment successful. Preparing notification.")
+            logger.info("✅ Deployment successful. Preparing evaluation notification.")
             evaluation_url = task_data.get("evaluation_url")
+
             if evaluation_url:
                 notification_payload = {
                     "email": task_data.get("email"),
-                    "task": task_data.get("task"),
-                    "round": task_data.get("round"),
+                    "task": repo_name,
+                    "round": round_number,
                     "nonce": task_data.get("nonce"),
                     "repo_url": deploy_info.get("repo_url"),
-                    "commit_sha": deploy_info.get("commit_sha"), # Now correctly populated
+                    "commit_sha": deploy_info.get("commit_sha"),
                     "pages_url": deploy_info.get("pages_url"),
                 }
                 try:
-                    logging.info(f"Notifying evaluation server: {notification_payload}")
-                    response = requests.post(evaluation_url, json=notification_payload)
+                    logger.info(f"Sending notification to evaluation server: {notification_payload}")
+                    response = requests.post(evaluation_url, json=notification_payload, timeout=30)
                     response.raise_for_status()
-                    logging.info("Successfully notified evaluation server.")
+                    logger.info("✅ Successfully notified evaluation server.")
                 except requests.exceptions.RequestException as e:
-                    logging.error(f"Failed to notify evaluation server: {e}")
+                    logger.error(f"Failed to notify evaluation server: {e}")
             else:
-                logging.warning("No evaluation_url found. Skipping notification.")
+                logger.warning("No evaluation_url provided. Skipping notification.")
         else:
-            logging.error("Deployment failed. No notification sent.")
+            logger.error("Deployment failed. No notification sent.")
 
     except Exception as e:
-        logging.error(f"An unexpected error occurred in the background task: {e}", exc_info=True)
+        logger.error(f"Unexpected error during build process: {e}", exc_info=True)
 
-
+# -------------------------
+# API Endpoints
+# -------------------------
 @app.post("/api-endpoint")
 async def handle_task_request(request: Request, background_tasks: BackgroundTasks):
     """
-    This endpoint receives the task, returns an immediate 200 OK,
-    and starts the build process in the background.
+    Receives a task request and triggers background deployment.
     """
     try:
         task_data = await request.json()
-        logging.info(f"Received request for task: {task_data.get('task')}")
+        logger.info(f"Received task request for: {task_data.get('task')}")
         background_tasks.add_task(run_the_build_process, task_data)
-        return {"message": "Task received and is being processed."}
+        return {"message": "Task received and is being processed in background."}
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid request body: {e}")
 
+
 @app.get("/")
 def read_root():
-    return {"status": "AI App Generator is running."}
+    """
+    Health check endpoint.
+    """
+    return {"status": "AI App Generator backend is running."}
