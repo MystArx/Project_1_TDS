@@ -100,8 +100,7 @@ Respond with ONLY raw markdown content.
         logger.error(f"Error generating README: {e}")
         return f"# {repo_name}\n\nThis project was generated based on the brief: {brief}"
 
-license_content =
-'''
+license_content ='''
 MIT License
 Copyright (c) 2025
 Permission is hereby granted, free of charge, to any person obtaining a copy
